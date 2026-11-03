@@ -25,7 +25,11 @@ from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 
 from isaaclab_tasks.manager_based.manipulation.place import mdp as place_mdp
-from isaaclab_tasks.manager_based.manipulation.place.mdp.grasp_feat import grasp_err_obs, place_err_obs
+from isaaclab_tasks.manager_based.manipulation.place.mdp.grasp_feat import (
+    grasp_err_angle_obs,
+    grasp_err_obs,
+    place_err_obs,
+)
 from isaaclab_tasks.manager_based.manipulation.stack import mdp
 from isaaclab_tasks.manager_based.manipulation.stack.mdp import franka_stack_events
 from isaaclab_tasks.manager_based.manipulation.stack.stack_env_cfg import ObjectTableSceneCfg
@@ -134,6 +138,8 @@ class ObservationsCfg:
             func=place_err_obs,
             params={"offset_path": os.path.join(os.path.dirname(__file__), "place_offset.json"), "frame": "ee"},
         )
+        # angle between the EE and the raw toy-truck orientation (1D); read only by the *_geangle config
+        grasp_err_angle = ObsTerm(func=grasp_err_angle_obs)
 
         def __post_init__(self):
             self.enable_corruption = False

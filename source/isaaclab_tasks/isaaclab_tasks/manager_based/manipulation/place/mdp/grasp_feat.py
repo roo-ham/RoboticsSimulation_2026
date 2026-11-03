@@ -7,6 +7,9 @@
 
 ``grasp_err`` (6D): symmetry-aware error to the grasp target frame on the toy truck.
 ``place_err`` (3D): position error to the place target above the box center.
+``grasp_err_angle`` (1D): angle between the EE quaternion and the raw toy-truck quaternion
+(no grasp offset ``R_bar``, no symmetry fold); only written by ``tools_c/add_grasp_err_to_hdf5.py
+--with_grasp_angle``.
 
 Only ``json`` and ``torch`` are imported at module level so that this file can also be loaded standalone
 (e.g. by ``tools_c/add_grasp_err_to_hdf5.py``) without launching Isaac Sim.
@@ -126,6 +129,23 @@ def grasp_err_from_poses(ee_p, ee_q, o_p, o_q, offset_path=DEFAULT_OFFSET_PATH, 
     return torch.cat([e_p, e_R], -1)
 
 
+def grasp_err_angle_from_poses(ee_q, o_q):
+    """Angle between two quaternions, shape (..., 1), in [0, pi].
+
+    .. math:: \\theta = 2 \\arccos\\big(|\\mathrm{clamp}(q_{ee} \\cdot q_{o}, -1, 1)|\\big)
+
+    Args:
+        ee_q, o_q: quaternions in (w, x, y, z), shape (..., 4).
+
+    Notes:
+        The ``abs`` removes the quaternion double cover (q and -q are the same rotation), so the result is
+        the geodesic angle between the two orientations. Both quaternions are assumed to be unit norm up to
+        numerical error; the ``clamp`` keeps ``arccos`` in its domain.
+    """
+    dot = (ee_q * o_q).sum(-1, keepdim=True).clamp(-1.0, 1.0).abs()
+    return 2.0 * torch.acos(dot)
+
+
 def grasp_err_obs(env, offset_path=DEFAULT_OFFSET_PATH, symmetric=True, frame="base"):
     """Observation term: grasp_err for the toy truck, computed from the same quantities as the policy obs."""
     from isaaclab.managers import SceneEntityCfg
@@ -142,6 +162,23 @@ def grasp_err_obs(env, offset_path=DEFAULT_OFFSET_PATH, symmetric=True, frame="b
         offset_path,
         symmetric,
         frame,
+    )
+
+
+def grasp_err_angle_obs(env):
+    """Observation term: angle between the EE and the raw toy-truck orientation, shape (1,).
+
+    Uses the same two observations the key was written from in the dataset (``eef_quat`` and
+    ``toy_truck_orientations``), so the env value matches ``tools_c/add_grasp_err_to_hdf5.py --with_grasp_angle``.
+    """
+    from isaaclab.managers import SceneEntityCfg
+
+    from isaaclab_tasks.manager_based.manipulation.place import mdp as place_mdp
+    from isaaclab_tasks.manager_based.manipulation.stack import mdp as stack_mdp
+
+    return grasp_err_angle_from_poses(
+        stack_mdp.ee_frame_pose_in_base_frame(env, return_key="quat"),
+        place_mdp.object_poses_in_base_frame(env, object_cfg=SceneEntityCfg("toy_truck"), return_key="quat"),
     )
 
 

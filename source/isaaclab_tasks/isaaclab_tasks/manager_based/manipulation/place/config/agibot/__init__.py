@@ -36,6 +36,10 @@ gym.register(
         "robomimic_bc_ge_ee_place_cfg_entry_point": (
             f"{agents.__name__}:robomimic/bc_rnn_low_dim_ge_ee_place.json"
         ),
+        # previous + grasp_err_angle (1D angle between EE and raw toy-truck quaternions)
+        "robomimic_bc_ge_ee_place_geangle_cfg_entry_point": (
+            f"{agents.__name__}:robomimic/bc_rnn_low_dim_ge_ee_place_geangle.json"
+        ),
     },
     disable_env_checker=True,
 )
