@@ -118,7 +118,9 @@ def rollout(policy, env, success_term, horizon, device):
         # Prepare observations
         obs = copy.deepcopy(obs_dict["policy"])
         for ob in obs:
-            obs[ob] = torch.squeeze(obs[ob])
+            # atleast_1d: a 1-D term (e.g. grasp_err_angle) is (1, 1) here and squeeze alone would make it
+            # 0-dim; for every term with ndim >= 1 this is identical to the previous torch.squeeze behavior.
+            obs[ob] = torch.atleast_1d(torch.squeeze(obs[ob]))
 
         # Check if environment image observations
         if hasattr(unwrapped_env.cfg, "image_obs_list"):
