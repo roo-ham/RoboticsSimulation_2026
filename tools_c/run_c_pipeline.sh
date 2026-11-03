@@ -5,6 +5,8 @@
 # Each stage can be run on its own; "all" runs generate..eval in order.
 # Second round (fingertip-frame errors, imitation_pland_v2.md):
 #   bash tools_c/run_c_pipeline.sh [convert_rel|smoke_rel|train_rel|eval_rel|rel]
+# Third round (rel + grasp_err_angle, 1D angle between EE and raw toy-truck quaternions):
+#   bash tools_c/run_c_pipeline.sh convert_rel2   -> datasets/mimic_${N_MIMIC}_rel2.hdf5
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -15,6 +17,7 @@ N_MIMIC=500  # same generation count as the earlier mimic_v2_500 run
 MIMIC=./datasets/team10_lee_s3_mimic_$N_MIMIC.hdf5
 GE=./datasets/mimic_${N_MIMIC}_ge.hdf5
 REL=./datasets/mimic_${N_MIMIC}_rel.hdf5  # same demos as $GE + grasp_err_ee, place_err_ee
+REL2=./datasets/mimic_${N_MIMIC}_rel2.hdf5  # same as $REL + grasp_err_angle (1D)
 SEEDS="101 111"
 EPOCH=2000
 export PYTHONUNBUFFERED=1
@@ -70,6 +73,12 @@ stage_convert_rel() {
     ./isaaclab.sh -p tools_c/add_grasp_err_to_hdf5.py --input $MIMIC --output $REL --frame base --max_demos $N_MIMIC
 }
 
+stage_convert_rel2() {
+    # $REL + grasp_err_angle (1D): same offsets/frame as above, so the existing keys are identical to $REL
+    ./isaaclab.sh -p tools_c/add_grasp_err_to_hdf5.py --input $MIMIC --output $REL2 --frame base \
+        --max_demos $N_MIMIC --with_grasp_angle
+}
+
 stage_smoke_rel() {  # 2 epochs each, then check shape_metadata contains the new keys
     for ALGO in bc_ge_ee bc_ge_ee_place; do
         echo n | ./isaaclab.sh -p scripts/imitation_learning/robomimic/train.py --task $TASK \
@@ -123,6 +132,7 @@ case "${1:-all}" in
     smoke_rel) stage_smoke_rel ;;
     train_rel) stage_train_rel ;;
     eval_rel) stage_eval_rel ;;
+    convert_rel2) stage_convert_rel2 ;;
     rel) stage_train_rel; stage_eval_rel ;;
     *) echo "unknown stage: $1"; exit 1 ;;
 esac
