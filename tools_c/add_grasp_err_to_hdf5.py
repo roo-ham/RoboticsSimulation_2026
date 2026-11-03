@@ -3,6 +3,9 @@
 #   ./isaaclab.sh -p tools_c/add_grasp_err_to_hdf5.py --input datasets/mimic_1000.hdf5 \
 #       --output datasets/mimic_1000_ge.hdf5 --frame base [--max_demos 1000]
 #
+# --with_grasp_angle additionally writes grasp_err_angle (1D), the angle between eef_quat and
+# toy_truck_orientations (no grasp offset, no symmetry fold). Without the flag the output is unchanged.
+#
 # offsets / symmetric / frames must be identical to the ObsTerms in place_toy2box_rmp_rel_env_cfg.py:
 #   grasp_err (frame = --frame), grasp_err_ee (frame "ee"), place_err_ee (frame "ee").
 import argparse
@@ -28,6 +31,11 @@ ap.add_argument("--place_offset", default=gf.DEFAULT_PLACE_OFFSET_PATH)
 ap.add_argument("--frame", default="base", choices=["base", "ee"])
 ap.add_argument("--no_symmetric", action="store_true")
 ap.add_argument("--max_demos", type=int, default=None, help="keep only the first N demos (by index)")
+ap.add_argument(
+    "--with_grasp_angle",
+    action="store_true",
+    help="also write grasp_err_angle (1D): 2*arccos(|clamp(dot(eef_quat, toy_truck_orientations), -1, 1)|)",
+)
 A = ap.parse_args()
 assert os.path.abspath(A.input) != os.path.abspath(A.output), "output must differ from input"
 off, poff = os.path.abspath(A.offset), os.path.abspath(A.place_offset)
@@ -51,12 +59,20 @@ with h5py.File(A.input, "r") as fi, h5py.File(A.output, "w") as fo:
                 continue
             g = do[k][grp]
             t = lambda n: torch.as_tensor(g[n][:], dtype=torch.float64)  # noqa: E731
+            if A.with_grasp_angle:
+                for key in ("eef_quat", "toy_truck_orientations"):
+                    if key not in g:
+                        raise KeyError(f"{grp} of {k} has no '{key}' (needed by --with_grasp_angle)")
             pose = (t("eef_pos"), t("eef_quat"), t("toy_truck_positions"), t("toy_truck_orientations"))
             feats = {
                 "grasp_err": gf.grasp_err_from_poses(*pose, off, not A.no_symmetric, A.frame),
                 "grasp_err_ee": gf.grasp_err_from_poses(*pose, off, not A.no_symmetric, "ee"),
                 "place_err_ee": gf.place_err_from_poses(t("eef_pos"), t("eef_quat"), t("box_positions"), poff, "ee"),
             }
+            if A.with_grasp_angle:
+                feats["grasp_err_angle"] = gf.grasp_err_angle_from_poses(
+                    t("eef_quat"), t("toy_truck_orientations")
+                )
             for name, v in feats.items():
                 if name in g:
                     del g[name]
@@ -69,4 +85,5 @@ with h5py.File(A.input, "r") as fi, h5py.File(A.output, "w") as fo:
             names = [n for n in mv[:] if n.decode() in keep]
             fo.create_dataset(f"mask/{mk}", data=np.array(names, dtype="S"))
 
-print(f"wrote {len(demos)} demos ({total} steps) with grasp_err, grasp_err_ee, place_err_ee -> {A.output}")
+print(f"wrote {len(demos)} demos ({total} steps) with grasp_err, grasp_err_ee, place_err_ee"
+      f"{', grasp_err_angle' if A.with_grasp_angle else ''} -> {A.output}")
